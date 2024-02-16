@@ -36,6 +36,7 @@
 #endif
 
 #if defined(__linux__)
+#define __SANE_USERSPACE_TYPES__
 #include <linux/fs.h>
 #elif defined(__APPLE__) && defined(__MACH__)
 #include <sys/disk.h>

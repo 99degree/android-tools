@@ -26,6 +26,11 @@
 #include <time.h>
 #include <sys/time.h>
 #include <stdint.h>
+#include <sys/types.h>
+#include <grp.h>
+#include <pwd.h>
+#include <shadow.h>
+#include <unistd.h>
 
 #include "sysdeps.h"
 #include "adb.h"
@@ -34,8 +39,8 @@
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
 #if !ADB_HOST
-#include <private/android_filesystem_config.h>
-#include <sys/capability.h>
+#include "android_filesystem_config.h"
+#include <linux/capability.h>
 #include <linux/prctl.h>
 #include <sys/mount.h>
 #else
@@ -159,7 +164,7 @@ void  adb_trace_init(void)
 #undef write
 #define open    adb_open
 #define write   adb_write
-#include <hardware/qemu_pipe.h>
+#include "qemu_pipe.h"
 #undef open
 #undef write
 #define open    ___xxx_open
@@ -295,6 +300,11 @@ static size_t fill_connect_data(char *buf, size_t bufsize)
         "ro.product.device",
     };
     static const int num_cnxn_props = ARRAY_SIZE(cnxn_props);
+    static const char *values[] = {
+        "occam",
+        "Nexus 4",
+        "mako",
+    };
     int i;
     size_t remaining = bufsize;
     size_t len;
@@ -304,8 +314,8 @@ static size_t fill_connect_data(char *buf, size_t bufsize)
     buf += len;
     for (i = 0; i < num_cnxn_props; i++) {
         char value[PROPERTY_VALUE_MAX];
-        property_get(cnxn_props[i], value, "");
-        len = snprintf(buf, remaining, "%s=%s;", cnxn_props[i], value);
+        //property_get(cnxn_props[i], value, "");
+        len = snprintf(buf, remaining, "%s=%s;", cnxn_props[i], values[i]);
         remaining -= len;
         buf += len;
     }
@@ -401,10 +411,6 @@ static char *connection_state_name(atransport *t)
         return "bootloader";
     case CS_DEVICE:
         return "device";
-    case CS_RECOVERY:
-        return "recovery";
-    case CS_SIDELOAD:
-        return "sideload";
     case CS_OFFLINE:
         return "offline";
     default:
@@ -821,7 +827,7 @@ static install_status_t install_listener(const char *local_name,
 {
     alistener *l;
 
-    //printf("install_listener('%s','%s')\n", local_name, connect_to);
+    printf("install_listener('%s','%s')\n", local_name, connect_to);
 
     for(l = listener_list.next; l != &listener_list; l = l->next){
         if(strcmp(local_name, l->local_name) == 0) {
@@ -960,9 +966,9 @@ void start_device_log(void)
 
     // read the trace mask from persistent property persist.adb.trace_mask
     // give up if the property is not set or cannot be parsed
-    property_get("persist.adb.trace_mask", value, "");
-    if (sscanf(value, "%x", &adb_trace_mask) != 1)
-        return;
+    //property_get("persist.adb.trace_mask", value, "");
+    //if (sscanf(value, "%x", &adb_trace_mask) != 1)
+    return;
 
     adb_mkdir("/data/adb", 0775);
     tzset();
@@ -1154,36 +1160,34 @@ int launch_server(int server_port)
  */
 void build_local_name(char* target_str, size_t target_size, int server_port)
 {
-  if (gListenAll > 0) {
-    snprintf(target_str, target_size, "tcp:%d", server_port);
-  } else {
-    snprintf(target_str, target_size, "local:%d", server_port);
-  }
+  snprintf(target_str, target_size, "tcp:%d", server_port);
 }
 
 #if !ADB_HOST
 static int should_drop_privileges() {
+    return 1;
 #ifndef ALLOW_ADBD_ROOT
     return 1;
 #else /* ALLOW_ADBD_ROOT */
     int secure = 0;
     char value[PROPERTY_VALUE_MAX];
 
+    return 0;
    /* run adbd in secure mode if ro.secure is set and
     ** we are not in the emulator
     */
-    property_get("ro.kernel.qemu", value, "");
+//    property_get("ro.kernel.qemu", value, "");
     if (strcmp(value, "1") != 0) {
-        property_get("ro.secure", value, "1");
+//        property_get("ro.secure", value, "1");
         if (strcmp(value, "1") == 0) {
             // don't run as root if ro.secure is set...
             secure = 1;
 
             // ... except we allow running as root in userdebug builds if the
             // service.adb.root property has been set by the "adb root" command
-            property_get("ro.debuggable", value, "");
+//            property_get("ro.debuggable", value, "");
             if (strcmp(value, "1") == 0) {
-                property_get("service.adb.root", value, "");
+//                property_get("service.adb.root", value, "");
                 if (strcmp(value, "1") == 0) {
                     secure = 0;
                 }
@@ -1227,8 +1231,8 @@ int adb_main(int is_daemon, int server_port)
         exit(1);
     }
 #else
-    property_get("ro.adb.secure", value, "0");
-    auth_enabled = !strcmp(value, "1");
+    //property_get("ro.adb.secure", value, "0");
+    auth_enabled = 0;//!strcmp(value, "1");
     if (auth_enabled)
         adb_auth_init();
 
@@ -1247,28 +1251,31 @@ int adb_main(int is_daemon, int server_port)
     if (should_drop_privileges()) {
         struct __user_cap_header_struct header;
         struct __user_cap_data_struct cap[2];
+        struct passwd *pw = getpwuid(AID_SHELL);
+        struct spwd *spwd;
 
         if (prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0) != 0) {
             exit(1);
         }
 
-        /* add extra groups:
-        ** AID_ADB to access the USB driver
-        ** AID_LOG to read system logs (adb logcat)
-        ** AID_INPUT to diagnose input issues (getevent)
-        ** AID_INET to diagnose network issues (netcfg, ping)
-        ** AID_GRAPHICS to access the frame buffer
-        ** AID_NET_BT and AID_NET_BT_ADMIN to diagnose bluetooth (hcidump)
-        ** AID_SDCARD_R to allow reading from the SD card
-        ** AID_SDCARD_RW to allow writing to the SD card
-        ** AID_MOUNT to allow unmounting the SD card before rebooting
-        ** AID_NET_BW_STATS to read out qtaguid statistics
-        */
-        gid_t groups[] = { AID_ADB, AID_LOG, AID_INPUT, AID_INET, AID_GRAPHICS,
-                           AID_NET_BT, AID_NET_BT_ADMIN, AID_SDCARD_R, AID_SDCARD_RW,
-                           AID_MOUNT, AID_NET_BW_STATS };
-        if (setgroups(sizeof(groups)/sizeof(groups[0]), groups) != 0) {
-            exit(1);
+        // initialize all default groups for the AID_SHELL user 
+        initgroups(pw->pw_name, pw->pw_gid);
+
+        // get the shadow password
+        spwd = getspnam(pw->pw_name);
+
+        // check for locked password
+        if (spwd->sp_pwdp[0] == '!') {
+            fprintf(stderr, "user: %s, password locked, please unlock account first\n", pw->pw_name);
+            fprintf(stderr, "adbd: exit\n");
+            exit(127);
+        }
+
+        // check if the password is non-empty
+        if (spwd->sp_pwdp[0] == '\0') {
+            fprintf(stderr, "user has no password set, can not start adbd\n");
+            fprintf(stderr, "adbd: exit\n");
+            exit(127);
         }
 
         /* then switch user and group to "shell" */
@@ -1308,15 +1315,17 @@ int adb_main(int is_daemon, int server_port)
     // If one of these properties is set, also listen on that port
     // If one of the properties isn't set and we couldn't listen on usb,
     // listen on the default port.
-    property_get("service.adb.tcp.port", value, "");
-    if (!value[0]) {
-        property_get("persist.adb.tcp.port", value, "");
-    }
-    if (sscanf(value, "%d", &port) == 1 && port > 0) {
-        printf("using port=%d\n", port);
+    //property_get("service.adb.tcp.port", value, "");
+    //if (!value[0]) {
+        //property_get("persist.adb.tcp.port", value, "");
+    //}
+    //if (sscanf(value, "%d", &port) == 1 && port > 0) {
+    //    printf("using port=%d\n", port);
         // listen on TCP port specified by service.adb.tcp.port property
-        local_init(port);
-    } else if (!usb) {
+    //    local_init(port);
+    //} else 
+    if (!usb) {
+        printf("Using USB\n");
         // listen on default port
         local_init(DEFAULT_ADB_LOCAL_TRANSPORT_PORT);
     }

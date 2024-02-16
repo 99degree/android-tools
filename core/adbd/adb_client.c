@@ -185,12 +185,12 @@ int _adb_connect(const char *service)
         strcpy(__adb_error, "service name too long");
         return -1;
     }
-    snprintf(tmp, sizeof tmp, "%d", __adb_server_port);
+    snprintf(tmp, sizeof tmp, "%04x", len);
 
     if (__adb_server_name)
         fd = socket_network_client(__adb_server_name, __adb_server_port, SOCK_STREAM);
     else
-        fd = socket_local_client(tmp, ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
+        fd = socket_loopback_client(__adb_server_port, SOCK_STREAM);
 
     if(fd < 0) {
         strcpy(__adb_error, "cannot connect to daemon");
@@ -201,7 +201,6 @@ int _adb_connect(const char *service)
         return -1;
     }
 
-    snprintf(tmp, sizeof tmp, "%04x", len);
     if(writex(fd, tmp, 4) || writex(fd, service, len)) {
         strcpy(__adb_error, "write failure during connection");
         adb_close(fd);
@@ -242,7 +241,7 @@ int adb_connect(const char *service)
     } else {
         // if server was running, check its version to make sure it is not out of date
         char buf[100];
-        unsigned n;
+        int n;
         int version = ADB_SERVER_VERSION - 1;
 
         // if we have a file descriptor, then parse version result
@@ -251,7 +250,7 @@ int adb_connect(const char *service)
 
             buf[4] = 0;
             n = strtoul(buf, 0, 16);
-            if(n > sizeof(buf)) goto error;
+            if(n > (int)sizeof(buf)) goto error;
             if(readx(fd, buf, n)) goto error;
             adb_close(fd);
 

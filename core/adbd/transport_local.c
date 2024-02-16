@@ -118,8 +118,7 @@ int local_connect_arbitrary_ports(int console_port, int adb_port)
     }
 #endif
     if (fd < 0) {
-        snprintf(buf, sizeof buf, "%d", adb_port);
-        fd = socket_local_client(buf, ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
+        fd = socket_loopback_client(adb_port, SOCK_STREAM);
     }
 
     if (fd >= 0) {
@@ -196,7 +195,7 @@ static void *server_socket_thread(void * arg)
 #undef write
 #define open    adb_open
 #define write   adb_write
-#include <hardware/qemu_pipe.h>
+#include "qemu_pipe.h"
 #undef open
 #undef write
 #define open    ___xxx_open
@@ -310,9 +309,10 @@ void local_init(int port)
 #else
         /* For the adbd daemon in the system image we need to distinguish
          * between the device, and the emulator. */
-        char is_qemu[PROPERTY_VALUE_MAX];
-        property_get("ro.kernel.qemu", is_qemu, "");
-        if (!strcmp(is_qemu, "1")) {
+        //char is_qemu[PROPERTY_VALUE_MAX];
+        //property_get("ro.kernel.qemu", is_qemu, "");
+        //if (!strcmp(is_qemu, "1")) {
+        if (access("/dev/qemu_pipe", R_OK|W_OK) != -1) {
             /* Running inside the emulator: use QEMUD pipe as the transport. */
             func = qemu_socket_thread;
         } else {

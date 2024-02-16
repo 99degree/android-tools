@@ -4,3 +4,5 @@ use-local-socket.patch
 ppc64el-ftbfs.patch
 add-bq-vendor-id.patch
 cve-2014-1909.patch
+remove-ssl-dep.patch
+adbd-makefile.patch

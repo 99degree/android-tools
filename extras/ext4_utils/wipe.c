@@ -19,6 +19,7 @@
 
 #if defined(__linux__)
 
+#define __SANE_USERSPACE_TYPES__
 #include <linux/fs.h>
 #include <sys/ioctl.h>
 
