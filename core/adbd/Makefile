@@ -1,6 +1,8 @@
 # Makefile for adbd
+#CC:=arm-oe-linux-gnueabi-gcc
+#CC:=arm-hisiv100nptl-linux-gcc
 
-VPATH+= $(SRCDIR)/core/adbd
+VPATH+= ./
 SRCS+=  adb.c
 SRCS+=	backup_service.c
 SRCS+=	fdevent.c
@@ -8,7 +10,7 @@ SRCS+=	transport.c
 SRCS+=	transport_local.c
 SRCS+=	transport_usb.c
 #SRCS+=	adb_auth_client.c
-SRCS+=	adb_auth_client_dummy.c
+SRCS+=  adb_auth_client_dummy.c
 SRCS+=	sockets.c
 SRCS+=	services.c
 SRCS+=	file_sync_service.c
@@ -20,7 +22,7 @@ SRCS+=	log_service.c
 SRCS+=	utils.c
 SRCS+=	base64.c
 
-VPATH+= $(SRCDIR)/core/libcutils
+VPATH+= ../libcutils
 SRCS+= abort_socket.c
 SRCS+= socket_inaddr_any_server.c
 SRCS+= socket_local_client.c
@@ -32,7 +34,7 @@ SRCS+= list.c
 SRCS+= load_file.c
 SRCS+= android_reboot.c
 
-#VPATH+= $(SRCDIR)/core/libzipfile
+#VPATH+= ../libzipfile
 #SRCS+= centraldir.c
 #SRCS+= zipfile.c
 
@@ -42,11 +44,17 @@ CPPFLAGS+= -DADB_HOST=0 -DHAVE_FORKEXEC=1 -D_XOPEN_SOURCE -D_GNU_SOURCE -DALLOW_
 CPPFLAGS+= -DHAVE_SYMLINKS -DBOARD_ALWAYS_INSECURE
 CPPFLAGS+= -DHAVE_TERMIO_H
 CPPFLAGS+= -DADBD_NON_ANDROID
-CPPFLAGS+= -I$(SRCDIR)/core/adbd
-CPPFLAGS+= -I$(SRCDIR)/core/include
+CPPFLAGS+= -I./
+CPPFLAGS+= -I../include
 
-LIBS+= -lc -lpthread -lz
-#LIBS+= `pkg-config --libs libcrypto` -lcrypt
+# 设置zlib openssl 头文件与库搜索路径
+#CPPFLAGS+= -I/home/workspace/build/openssl/include
+#CPPFLAGS+= -I/home/workspace/build/zlib/include
+
+#LDFLAGS+= -L/home/workspace/build/zlib/lib
+#LDFLAGS+= -L/home/workspace/build/openssl/lib
+
+LIBS+= -lc -lpthread -static
 
 OBJS= $(patsubst %, %.o, $(basename $(SRCS)))
 
